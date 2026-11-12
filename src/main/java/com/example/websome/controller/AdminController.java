@@ -33,7 +33,8 @@ public class AdminController {
         if (!isAdmin(request)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Truy cập bị từ chối. Chỉ dành cho Quản trị viên (ADMIN)!"));
         }
-        List<UserDto> users = userService.getAllUsers();
+        Long currentUserId = (Long) request.getAttribute("currentUserId");
+        List<UserDto> users = userService.getAllUsers(currentUserId);
         return ResponseEntity.ok(users);
     }
 
@@ -63,8 +64,9 @@ public class AdminController {
         if (!isAdmin(request)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Chỉ có Admin mới có quyền sửa thông tin người dùng!"));
         }
+        Long currentUserId = (Long) request.getAttribute("currentUserId");
         try {
-            UserDto updated = userService.updateUserByAdmin(id, dto);
+            UserDto updated = userService.updateUserByAdmin(id, dto, currentUserId);
             return ResponseEntity.ok(updated);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -76,8 +78,9 @@ public class AdminController {
         if (!isAdmin(request)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Chỉ có Admin mới có quyền xóa người dùng!"));
         }
+        Long currentUserId = (Long) request.getAttribute("currentUserId");
         try {
-            userService.deleteUser(id);
+            userService.deleteUser(id, currentUserId);
             return ResponseEntity.ok(Map.of("message", "Đã xóa người dùng thành công!"));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

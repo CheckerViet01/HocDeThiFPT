@@ -129,41 +129,78 @@ public UserDto updateMssv(Long userId, String mssv) {
         return toDto(user);
     }
 
-    public List<UserDto> getAllUsers() {
+    public List<UserDto> getAllUsers(Long currentAdminId) {
+        boolean isMaster = false;
+        if (currentAdminId != null) {
+            User currentAdmin = userRepository.findById(currentAdminId).orElse(null);
+            if (currentAdmin != null && Boolean.TRUE.equals(currentAdmin.getIsMasterAdmin())) {
+                isMaster = true;
+            }
+        }
+
+        // If Master Admin: can see all accounts (including all admins and users)
+        // If Sub-admin: can ONLY see normal users (ROLE_USER), CANNOT see any admins
+        final boolean finalIsMaster = isMaster;
         return userRepository.findAll().stream()
+                .filter(u -> finalIsMaster || !"ROLE_ADMIN".equalsIgnoreCase(u.getRole()))
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
 
     @Transactional
-    public UserDto updateUserByAdmin(Long id, UserUpdateDto dto) {
-        User user = userRepository.findById(id)
+    public UserDto updateUserByAdmin(Long id, UserUpdateDto dto, Long currentAdminId) {
+        User currentAdmin = userRepository.findById(currentAdminId)
+                .orElseThrow(() -> new RuntimeException("Phiên đăng nhập không hợp lệ!"));
+        boolean isMaster = Boolean.TRUE.equals(currentAdmin.getIsMasterAdmin());
+
+        User targetUser = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng ID: " + id));
 
-        if (dto.getFullName() != null && !dto.getFullName().isBlank()) {
-            user.setFullName(dto.getFullName().trim());
-        }
-        if (dto.getMssv() != null) {
-            user.setMssv(dto.getMssv().trim().toUpperCase());
-        }
-        if (dto.getRole() != null && !dto.getRole().isBlank()) {
-            user.setRole(dto.getRole().trim().toUpperCase());
-        }
-        if (dto.getStatus() != null && !dto.getStatus().isBlank()) {
-            user.setStatus(dto.getStatus().trim());
+        // Sub-admin is strictly forbidden from editing ANY admin account
+        if (!isMaster && "ROLE_ADMIN".equalsIgnoreCase(targetUser.getRole())) {
+            throw new RuntimeException("Chỉ Quản Trị Viên Tối Cao (Master Admin) mới có quyền chỉnh sửa tài khoản Quản trị viên!");
         }
 
-        user = userRepository.save(user);
-        return toDto(user);
+        // Sub-admin cannot promote anyone to ROLE_ADMIN
+        if (!isMaster && dto.getRole() != null && "ROLE_ADMIN".equalsIgnoreCase(dto.getRole().trim())) {
+            throw new RuntimeException("Chỉ Master Admin mới có quyền thăng cấp vai trò Quản trị viên (ROLE_ADMIN)!");
+        }
+
+        if (dto.getFullName() != null && !dto.getFullName().isBlank()) {
+            targetUser.setFullName(dto.getFullName().trim());
+        }
+        if (dto.getMssv() != null) {
+            targetUser.setMssv(dto.getMssv().trim().toUpperCase());
+        }
+        if (dto.getRole() != null && !dto.getRole().isBlank()) {
+            targetUser.setRole(dto.getRole().trim().toUpperCase());
+        }
+        if (dto.getStatus() != null && !dto.getStatus().isBlank()) {
+            targetUser.setStatus(dto.getStatus().trim());
+        }
+
+        targetUser = userRepository.save(targetUser);
+        return toDto(targetUser);
     }
 
     @Transactional
-    public void deleteUser(Long id) {
-        User user = userRepository.findById(id)
+    public void deleteUser(Long id, Long currentAdminId) {
+        User currentAdmin = userRepository.findById(currentAdminId)
+                .orElseThrow(() -> new RuntimeException("Phiên đăng nhập không hợp lệ!"));
+        boolean isMaster = Boolean.TRUE.equals(currentAdmin.getIsMasterAdmin());
+
+        User targetUser = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng ID: " + id));
-        if (Boolean.TRUE.equals(user.getIsMasterAdmin())) {
+
+        if (Boolean.TRUE.equals(targetUser.getIsMasterAdmin())) {
             throw new RuntimeException("Không thể xóa tài khoản Quản Trị Viên Tối Cao (Master Admin)!");
         }
+
+        // Sub-admin is strictly forbidden from deleting ANY admin account
+        if (!isMaster && "ROLE_ADMIN".equalsIgnoreCase(targetUser.getRole())) {
+            throw new RuntimeException("Chỉ Quản Trị Viên Tối Cao (Master Admin) mới có quyền xóa tài khoản Quản trị viên!");
+        }
+
         userRepository.deleteById(id);
     }
 
